@@ -6,34 +6,43 @@ from telegram.ext import Application, CommandHandler, ContextTypes, Conversation
 from src.targets import add_target, load_targets
 from src.search import search_products, get_countries_text, get_country
 from src.scraper import scrape
+from src.listings import add_listing, search_listings, get_my_listings, remove_listing
 
 load_dotenv()
 
 logging.basicConfig(level=logging.WARNING)
 
 WAITING_FOR_SEARCH, WAITING_FOR_COUNTRY, WAITING_FOR_PICK, WAITING_FOR_PRICE = range(4)
+SELL_TITLE, SELL_PRICE, SELL_CONDITION, SELL_DESCRIPTION, SELL_PHOTO = range(4, 9)
+BROWSE_QUERY = range(9, 10)
 
 user_sessions = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Hi! I am your Price Alert Bot.\n\n"
-        "Search for any product and I will alert you on Telegram when the price drops to your target.\n\n"
+        "Hi! I am your Price Alert and Marketplace Bot.\n\n"
+        "I can help you find products, monitor prices, and buy or sell items.\n\n"
         "Commands:\n"
-        "/search - Search for a product to monitor\n"
-        "/list - See all your monitored products\n"
+        "/search - Search and monitor a product price\n"
+        "/browse - Browse items for sale\n"
+        "/sell - List a product you want to sell\n"
+        "/mylistings - See your active listings\n"
+        "/list - See your monitored products\n"
         "/check - Check all prices now\n"
-        "/remove - Remove a product\n"
         "/help - Show this message"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Here is what I can do:\n\n"
-        "/search - Search for any product by name\n"
-        "/list - See all monitored products\n"
-        "/check - Check all prices right now\n"
-        "/remove - Stop monitoring a product\n"
+        "BUYING:\n"
+        "/search - Search and monitor a product price\n"
+        "/browse - Browse items listed for sale\n"
+        "/list - See your monitored products\n"
+        "/check - Check all prices now\n\n"
+        "SELLING:\n"
+        "/sell - List a product you want to sell\n"
+        "/mylistings - See and manage your listings\n\n"
         "/help - Show this message"
     )
 
@@ -64,16 +73,12 @@ async def get_country_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
     session["country"] = country
     query = session["query"]
 
-    await update.message.reply_text(
-        f"Searching for {query} in {country['name']}..."
-    )
+    await update.message.reply_text(f"Searching for {query} in {country['name']}...")
 
     results = search_products(query, country["gl"])
 
     if not results:
-        await update.message.reply_text(
-            "No results found. Try a different search term."
-        )
+        await update.message.reply_text("No results found. Try a different search term.")
         return ConversationHandler.END
 
     session["results"] = results
@@ -150,6 +155,205 @@ async def set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please send a valid number. For example: 50000")
         return WAITING_FOR_PRICE
 
+async def sell_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Let's list your product for sale.\n\n"
+        "What are you selling?\n\n"
+        "For example: PS5, iPhone 14, Laptop, Nike Shoes"
+    )
+    return SELL_TITLE
+
+async def sell_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    title = update.message.text.strip()
+    user_sessions[user_id] = {"sell_title": title}
+    await update.message.reply_text(
+        f"What is your asking price?\n\n"
+        f"Send the amount as a number. For example: 55000"
+    )
+    return SELL_PRICE
+
+async def sell_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    try:
+        price = float(update.message.text.strip().replace(",", ""))
+        user_sessions[user_id]["sell_price"] = price
+        await update.message.reply_text(
+            "What is the condition of the item?\n\n"
+            "1. Brand new\n"
+            "2. Like new\n"
+            "3. Good condition\n"
+            "4. Fair condition"
+        )
+        return SELL_CONDITION
+    except ValueError:
+        await update.message.reply_text("Please send a valid number. For example: 55000")
+        return SELL_PRICE
+
+async def sell_condition(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    conditions = {
+        "1": "Brand new",
+        "2": "Like new",
+        "3": "Good condition",
+        "4": "Fair condition"
+    }
+    choice = update.message.text.strip()
+    condition = conditions.get(choice, choice)
+    user_sessions[user_id]["sell_condition"] = condition
+    await update.message.reply_text(
+        "Add a short description.\n\n"
+        "For example: Sealed box, bought 3 months ago, comes with all accessories."
+    )
+    return SELL_DESCRIPTION
+
+async def sell_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    description = update.message.text.strip()
+    user_sessions[user_id]["sell_description"] = description
+    await update.message.reply_text(
+        "Send a photo of your product.\n\n"
+        "Or type /skip to list without a photo."
+    )
+    return SELL_PHOTO
+
+async def sell_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    session = user_sessions.get(user_id, {})
+    username = update.effective_user.username or update.effective_user.first_name
+
+    photo_id = None
+    if update.message.photo:
+        photo_id = update.message.photo[-1].file_id
+
+    listing = add_listing(
+        user_id=user_id,
+        username=username,
+        title=session.get("sell_title", ""),
+        price=session.get("sell_price", 0),
+        condition=session.get("sell_condition", ""),
+        description=session.get("sell_description", ""),
+        photo_id=photo_id,
+    )
+
+    await update.message.reply_text(
+        f"Your listing is live!\n\n"
+        f"Product: {listing['title']}\n"
+        f"Price: {listing['price']}\n"
+        f"Condition: {listing['condition']}\n"
+        f"Description: {listing['description']}\n"
+        f"Photo: {'Yes' if photo_id else 'No'}\n\n"
+        f"Buyers can find your listing using /browse.\n"
+        f"Use /mylistings to manage your listings."
+    )
+    user_sessions.pop(user_id, None)
+    return ConversationHandler.END
+
+async def skip_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    session = user_sessions.get(user_id, {})
+    username = update.effective_user.username or update.effective_user.first_name
+
+    listing = add_listing(
+        user_id=user_id,
+        username=username,
+        title=session.get("sell_title", ""),
+        price=session.get("sell_price", 0),
+        condition=session.get("sell_condition", ""),
+        description=session.get("sell_description", ""),
+        photo_id=None,
+    )
+
+    await update.message.reply_text(
+        f"Your listing is live!\n\n"
+        f"Product: {listing['title']}\n"
+        f"Price: {listing['price']}\n"
+        f"Condition: {listing['condition']}\n\n"
+        f"Buyers can find your listing using /browse.\n"
+        f"Use /mylistings to manage your listings."
+    )
+    user_sessions.pop(user_id, None)
+    return ConversationHandler.END
+
+async def browse_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "What are you looking for?\n\n"
+        "For example: PS5, iPhone, Laptop, Shoes"
+    )
+    return list(BROWSE_QUERY)[0]
+
+async def browse_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip()
+    results = search_listings(query)
+
+    if not results:
+        await update.message.reply_text(
+            f"No listings found for {query}.\n\n"
+            f"Try a different search or check back later."
+        )
+        return ConversationHandler.END
+
+    for l in results:
+        caption = (
+            f"Product: {l['title']}\n"
+            f"Price: {l['price']}\n"
+            f"Condition: {l['condition']}\n"
+            f"Description: {l['description']}\n"
+            f"Seller: @{l['username']}\n"
+            f"Listed: {l['created_at']}\n\n"
+            f"Contact the seller directly to buy."
+        )
+        if l.get("photo_id"):
+            await update.message.reply_photo(photo=l["photo_id"], caption=caption)
+        else:
+            await update.message.reply_text(caption)
+
+    return ConversationHandler.END
+
+async def my_listings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    listings = get_my_listings(user_id)
+    active = [l for l in listings if l.get("active", True)]
+
+    if not active:
+        await update.message.reply_text(
+            "You have no active listings.\n\nUse /sell to list a product."
+        )
+        return
+
+    message = f"Your active listings ({len(active)}):\n\n"
+    for l in active:
+        message += (
+            f"ID: {l['id']}\n"
+            f"Product: {l['title']}\n"
+            f"Price: {l['price']}\n"
+            f"Condition: {l['condition']}\n"
+            f"Listed: {l['created_at']}\n\n"
+        )
+
+    message += "To remove a listing send: /removelisting [ID]"
+    await update.message.reply_text(message)
+
+async def remove_listing_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    args = context.args
+
+    if not args:
+        await update.message.reply_text(
+            "Send the listing ID to remove.\n\nFor example: /removelisting 3\n\nUse /mylistings to see your listing IDs."
+        )
+        return
+
+    try:
+        listing_id = int(args[0])
+        success = remove_listing(user_id, listing_id)
+        if success:
+            await update.message.reply_text(f"Listing {listing_id} removed successfully.")
+        else:
+            await update.message.reply_text("Listing not found or you do not have permission to remove it.")
+    except ValueError:
+        await update.message.reply_text("Please send a valid listing ID number.")
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_sessions.pop(update.effective_user.id, None)
     await update.message.reply_text("Cancelled.")
@@ -206,16 +410,6 @@ async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Current price: {current} | Your target: {goal}"
             )
 
-async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    targets = load_targets()
-    if not targets:
-        await update.message.reply_text("You have no products being monitored.")
-        return
-    message = "Send the number of the product to remove:\n\n"
-    for i, t in enumerate(targets, 1):
-        message += f"{i}. {t['label'] or t['url']}\n"
-    await update.message.reply_text(message)
-
 def run_bot():
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     app = Application.builder().token(token).build()
@@ -231,12 +425,38 @@ def run_bot():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    sell_handler = ConversationHandler(
+        entry_points=[CommandHandler("sell", sell_start)],
+        states={
+            SELL_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, sell_title)],
+            SELL_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, sell_price)],
+            SELL_CONDITION: [MessageHandler(filters.TEXT & ~filters.COMMAND, sell_condition)],
+            SELL_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, sell_description)],
+            SELL_PHOTO: [
+                MessageHandler(filters.PHOTO, sell_photo),
+                CommandHandler("skip", skip_photo),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    browse_handler = ConversationHandler(
+        entry_points=[CommandHandler("browse", browse_start)],
+        states={
+            list(BROWSE_QUERY)[0]: [MessageHandler(filters.TEXT & ~filters.COMMAND, browse_search)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("list", list_targets))
     app.add_handler(CommandHandler("check", check_now))
-    app.add_handler(CommandHandler("remove", remove_command))
+    app.add_handler(CommandHandler("mylistings", my_listings))
+    app.add_handler(CommandHandler("removelisting", remove_listing_command))
     app.add_handler(search_handler)
+    app.add_handler(sell_handler)
+    app.add_handler(browse_handler)
 
     print("Bot is running. Open Telegram and type /start to begin.")
     app.run_polling()
