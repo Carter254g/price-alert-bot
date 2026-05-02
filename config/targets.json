@@ -1,3 +1,11 @@
 {
-  "targets": []
+  "targets": [
+    {
+      "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+      "target_price": 100.0,
+      "label": "Test Book",
+      "last_price": 51.77,
+      "active": true
+    }
+  ]
 }
