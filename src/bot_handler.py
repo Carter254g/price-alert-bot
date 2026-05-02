@@ -7,6 +7,7 @@ from src.targets import add_target, load_targets
 from src.search import search_products, get_countries_text, get_country
 from src.scraper import scrape
 from src.listings import add_listing, search_listings, get_my_listings, remove_listing
+from src.jiji import scrape_jiji
 
 load_dotenv()
 
@@ -14,7 +15,7 @@ logging.basicConfig(level=logging.WARNING)
 
 WAITING_FOR_SEARCH, WAITING_FOR_COUNTRY, WAITING_FOR_PICK, WAITING_FOR_PRICE = range(4)
 SELL_TITLE, SELL_PRICE, SELL_CONDITION, SELL_DESCRIPTION, SELL_PHOTO = range(4, 9)
-BROWSE_QUERY = range(9, 10)
+BROWSE_QUERY, BROWSE_MIN_PRICE, BROWSE_MAX_PRICE = range(9, 12)
 
 user_sessions = {}
 
@@ -24,7 +25,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "I can help you find products, monitor prices, and buy or sell items.\n\n"
         "Commands:\n"
         "/search - Search and monitor a product price\n"
-        "/browse - Browse items for sale\n"
+        "/browse - Browse items for sale locally and on Jiji\n"
         "/sell - List a product you want to sell\n"
         "/mylistings - See your active listings\n"
         "/list - See your monitored products\n"
@@ -37,7 +38,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Here is what I can do:\n\n"
         "BUYING:\n"
         "/search - Search and monitor a product price\n"
-        "/browse - Browse items listed for sale\n"
+        "/browse - Browse local listings and Jiji Kenya\n"
         "/list - See your monitored products\n"
         "/check - Check all prices now\n\n"
         "SELLING:\n"
@@ -168,8 +169,7 @@ async def sell_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title = update.message.text.strip()
     user_sessions[user_id] = {"sell_title": title}
     await update.message.reply_text(
-        f"What is your asking price?\n\n"
-        f"Send the amount as a number. For example: 55000"
+        f"What is your asking price?\n\nSend the amount as a number. For example: 55000"
     )
     return SELL_PRICE
 
@@ -192,18 +192,12 @@ async def sell_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def sell_condition(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conditions = {
-        "1": "Brand new",
-        "2": "Like new",
-        "3": "Good condition",
-        "4": "Fair condition"
-    }
+    conditions = {"1": "Brand new", "2": "Like new", "3": "Good condition", "4": "Fair condition"}
     choice = update.message.text.strip()
     condition = conditions.get(choice, choice)
     user_sessions[user_id]["sell_condition"] = condition
     await update.message.reply_text(
-        "Add a short description.\n\n"
-        "For example: Sealed box, bought 3 months ago, comes with all accessories."
+        "Add a short description.\n\nFor example: Sealed box, bought 3 months ago, comes with all accessories."
     )
     return SELL_DESCRIPTION
 
@@ -212,8 +206,7 @@ async def sell_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     description = update.message.text.strip()
     user_sessions[user_id]["sell_description"] = description
     await update.message.reply_text(
-        "Send a photo of your product.\n\n"
-        "Or type /skip to list without a photo."
+        "Send a photo of your product.\n\nOr type /skip to list without a photo."
     )
     return SELL_PHOTO
 
@@ -221,30 +214,16 @@ async def sell_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     session = user_sessions.get(user_id, {})
     username = update.effective_user.username or update.effective_user.first_name
-
-    photo_id = None
-    if update.message.photo:
-        photo_id = update.message.photo[-1].file_id
-
+    photo_id = update.message.photo[-1].file_id if update.message.photo else None
     listing = add_listing(
-        user_id=user_id,
-        username=username,
-        title=session.get("sell_title", ""),
-        price=session.get("sell_price", 0),
-        condition=session.get("sell_condition", ""),
-        description=session.get("sell_description", ""),
+        user_id=user_id, username=username,
+        title=session.get("sell_title", ""), price=session.get("sell_price", 0),
+        condition=session.get("sell_condition", ""), description=session.get("sell_description", ""),
         photo_id=photo_id,
     )
-
     await update.message.reply_text(
-        f"Your listing is live!\n\n"
-        f"Product: {listing['title']}\n"
-        f"Price: {listing['price']}\n"
-        f"Condition: {listing['condition']}\n"
-        f"Description: {listing['description']}\n"
-        f"Photo: {'Yes' if photo_id else 'No'}\n\n"
-        f"Buyers can find your listing using /browse.\n"
-        f"Use /mylistings to manage your listings."
+        f"Your listing is live!\n\nProduct: {listing['title']}\nPrice: {listing['price']}\n"
+        f"Photo: {'Yes' if photo_id else 'No'}\n\nBuyers can find it using /browse."
     )
     user_sessions.pop(user_id, None)
     return ConversationHandler.END
@@ -253,97 +232,141 @@ async def skip_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     session = user_sessions.get(user_id, {})
     username = update.effective_user.username or update.effective_user.first_name
-
     listing = add_listing(
-        user_id=user_id,
-        username=username,
-        title=session.get("sell_title", ""),
-        price=session.get("sell_price", 0),
-        condition=session.get("sell_condition", ""),
-        description=session.get("sell_description", ""),
+        user_id=user_id, username=username,
+        title=session.get("sell_title", ""), price=session.get("sell_price", 0),
+        condition=session.get("sell_condition", ""), description=session.get("sell_description", ""),
         photo_id=None,
     )
-
     await update.message.reply_text(
-        f"Your listing is live!\n\n"
-        f"Product: {listing['title']}\n"
-        f"Price: {listing['price']}\n"
-        f"Condition: {listing['condition']}\n\n"
-        f"Buyers can find your listing using /browse.\n"
-        f"Use /mylistings to manage your listings."
+        f"Your listing is live!\n\nProduct: {listing['title']}\nPrice: {listing['price']}\n\n"
+        f"Buyers can find it using /browse."
     )
     user_sessions.pop(user_id, None)
     return ConversationHandler.END
 
 async def browse_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "What are you looking for?\n\n"
-        "For example: PS5, iPhone, Laptop, Shoes"
+        "What are you looking for?\n\nFor example: PS5, iPhone, Laptop, Shoes"
     )
-    return list(BROWSE_QUERY)[0]
+    return BROWSE_QUERY
 
-async def browse_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def browse_get_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     query = update.message.text.strip()
-    results = search_listings(query)
+    user_sessions[user_id] = {"browse_query": query}
+    await update.message.reply_text(
+        "What is your minimum budget? (in KES)\n\nOr type /skip to search all prices."
+    )
+    return BROWSE_MIN_PRICE
 
-    if not results:
+async def browse_min_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    try:
+        min_price = float(update.message.text.strip().replace(",", ""))
+        user_sessions[user_id]["browse_min"] = min_price
+    except ValueError:
+        user_sessions[user_id]["browse_min"] = None
+    await update.message.reply_text(
+        "What is your maximum budget? (in KES)\n\nOr type /skip to search all prices."
+    )
+    return BROWSE_MAX_PRICE
+
+async def browse_skip_min(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_sessions[user_id]["browse_min"] = None
+    await update.message.reply_text(
+        "What is your maximum budget? (in KES)\n\nOr type /skip to search all prices."
+    )
+    return BROWSE_MAX_PRICE
+
+async def browse_max_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    try:
+        max_price = float(update.message.text.strip().replace(",", ""))
+        user_sessions[user_id]["browse_max"] = max_price
+    except ValueError:
+        user_sessions[user_id]["browse_max"] = None
+    return await do_browse(update, user_id)
+
+async def browse_skip_max(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_sessions[user_id]["browse_max"] = None
+    return await do_browse(update, user_id)
+
+async def do_browse(update, user_id):
+    session = user_sessions.get(user_id, {})
+    query = session.get("browse_query", "")
+    min_price = session.get("browse_min")
+    max_price = session.get("browse_max")
+
+    price_range = ""
+    if min_price and max_price:
+        price_range = f" between KES {min_price:,.0f} and KES {max_price:,.0f}"
+    elif max_price:
+        price_range = f" under KES {max_price:,.0f}"
+    elif min_price:
+        price_range = f" above KES {min_price:,.0f}"
+
+    await update.message.reply_text(f"Searching for {query}{price_range}...")
+
+    local_results = search_listings(query)
+    jiji_results = scrape_jiji(query, min_price, max_price)
+
+    if local_results:
+        await update.message.reply_text(f"Local listings for {query}:\n")
+        for l in local_results:
+            caption = (
+                f"Product: {l['title']}\n"
+                f"Price: KES {l['price']:,.0f}\n"
+                f"Condition: {l['condition']}\n"
+                f"Description: {l['description']}\n"
+                f"Seller: @{l['username']}\n\n"
+                f"Contact the seller directly to buy."
+            )
+            if l.get("photo_id"):
+                await update.message.reply_photo(photo=l["photo_id"], caption=caption)
+            else:
+                await update.message.reply_text(caption)
+
+    if jiji_results:
+        message = f"Listings from Jiji Kenya for {query}{price_range}:\n\n"
+        for i, r in enumerate(jiji_results, 1):
+            message += f"{i}. {r['title']}\n"
+            message += f"   Price: {r['price']}\n"
+            message += f"   Location: {r['region']}\n"
+            if r.get("url"):
+                message += f"   Link: {r['url']}\n"
+            message += "\n"
+        await update.message.reply_text(message)
+
+    if not local_results and not jiji_results:
         await update.message.reply_text(
-            f"No listings found for {query}.\n\n"
-            f"Try a different search or check back later."
+            f"No listings found for {query}{price_range}.\n\nTry a different search or adjust your budget."
         )
-        return ConversationHandler.END
 
-    for l in results:
-        caption = (
-            f"Product: {l['title']}\n"
-            f"Price: {l['price']}\n"
-            f"Condition: {l['condition']}\n"
-            f"Description: {l['description']}\n"
-            f"Seller: @{l['username']}\n"
-            f"Listed: {l['created_at']}\n\n"
-            f"Contact the seller directly to buy."
-        )
-        if l.get("photo_id"):
-            await update.message.reply_photo(photo=l["photo_id"], caption=caption)
-        else:
-            await update.message.reply_text(caption)
-
+    user_sessions.pop(user_id, None)
     return ConversationHandler.END
 
 async def my_listings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     listings = get_my_listings(user_id)
     active = [l for l in listings if l.get("active", True)]
-
     if not active:
-        await update.message.reply_text(
-            "You have no active listings.\n\nUse /sell to list a product."
-        )
+        await update.message.reply_text("You have no active listings.\n\nUse /sell to list a product.")
         return
-
     message = f"Your active listings ({len(active)}):\n\n"
     for l in active:
-        message += (
-            f"ID: {l['id']}\n"
-            f"Product: {l['title']}\n"
-            f"Price: {l['price']}\n"
-            f"Condition: {l['condition']}\n"
-            f"Listed: {l['created_at']}\n\n"
-        )
-
+        message += f"ID: {l['id']}\nProduct: {l['title']}\nPrice: {l['price']}\nCondition: {l['condition']}\nListed: {l['created_at']}\n\n"
     message += "To remove a listing send: /removelisting [ID]"
     await update.message.reply_text(message)
 
 async def remove_listing_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
-
     if not args:
-        await update.message.reply_text(
-            "Send the listing ID to remove.\n\nFor example: /removelisting 3\n\nUse /mylistings to see your listing IDs."
-        )
+        await update.message.reply_text("Send the listing ID to remove.\n\nFor example: /removelisting 3")
         return
-
     try:
         listing_id = int(args[0])
         success = remove_listing(user_id, listing_id)
@@ -362,20 +385,13 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_targets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     targets = load_targets()
     if not targets:
-        await update.message.reply_text(
-            "You have no products being monitored.\n\nUse /search to find a product."
-        )
+        await update.message.reply_text("You have no products being monitored.\n\nUse /search to find a product.")
         return
     message = "Your monitored products:\n\n"
     for i, t in enumerate(targets, 1):
         status = "active" if t.get("active", True) else "paused"
         last = t.get("last_price") or "not checked yet"
-        message += (
-            f"{i}. {t['label'] or t['url']}\n"
-            f"   Target: {t['target_price']}\n"
-            f"   Last price: {last}\n"
-            f"   Status: {status}\n\n"
-        )
+        message += f"{i}. {t['label'] or t['url']}\n   Target: {t['target_price']}\n   Last price: {last}\n   Status: {status}\n\n"
     await update.message.reply_text(message)
 
 async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -389,26 +405,17 @@ async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
         result = scrape(target["url"])
         if not result or result["price"] is None:
-            await update.message.reply_text(
-                f"Could not get price for: {target['label'] or target['url']}"
-            )
+            await update.message.reply_text(f"Could not get price for: {target['label'] or target['url']}")
             continue
         current = result["price"]
         goal = target["target_price"]
         label = target["label"] or target["url"]
         if current <= goal:
             await update.message.reply_text(
-                f"Price Alert!\n\n"
-                f"Product: {label}\n"
-                f"Current price: {current}\n"
-                f"Your target: {goal}\n\n"
-                f"URL: {target['url']}"
+                f"Price Alert!\n\nProduct: {label}\nCurrent price: {current}\nYour target: {goal}\n\nURL: {target['url']}"
             )
         else:
-            await update.message.reply_text(
-                f"No alert for {label}\n"
-                f"Current price: {current} | Your target: {goal}"
-            )
+            await update.message.reply_text(f"No alert for {label}\nCurrent price: {current} | Your target: {goal}")
 
 def run_bot():
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -443,7 +450,15 @@ def run_bot():
     browse_handler = ConversationHandler(
         entry_points=[CommandHandler("browse", browse_start)],
         states={
-            list(BROWSE_QUERY)[0]: [MessageHandler(filters.TEXT & ~filters.COMMAND, browse_search)],
+            BROWSE_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, browse_get_query)],
+            BROWSE_MIN_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, browse_min_price),
+                CommandHandler("skip", browse_skip_min),
+            ],
+            BROWSE_MAX_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, browse_max_price),
+                CommandHandler("skip", browse_skip_max),
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
