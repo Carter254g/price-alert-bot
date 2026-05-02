@@ -41,6 +41,28 @@ def remove_target(url):
     print(f"Removed: {url}")
     return True
 
+def pause_target(url):
+    targets = load_targets()
+    for t in targets:
+        if t["url"] == url:
+            t["active"] = False
+            save_targets(targets)
+            print(f"Paused: {url}")
+            return True
+    print(f"URL not found: {url}")
+    return False
+
+def resume_target(url):
+    targets = load_targets()
+    for t in targets:
+        if t["url"] == url:
+            t["active"] = True
+            save_targets(targets)
+            print(f"Resumed: {url}")
+            return True
+    print(f"URL not found: {url}")
+    return False
+
 def update_last_price(url, price):
     targets = load_targets()
     for t in targets:

@@ -1,5 +1,5 @@
 import typer
-from src.targets import add_target, remove_target, load_targets
+from src.targets import add_target, remove_target, load_targets, pause_target, resume_target
 from src.checker import check_all
 from src.telegram import send_test_message
 from src.scheduler import start_scheduler
@@ -23,15 +23,32 @@ def remove(
     remove_target(url)
 
 @app.command()
+def pause(
+    url: str = typer.Option(..., help="URL to pause")
+):
+    """Pause monitoring a URL."""
+    pause_target(url)
+
+@app.command()
+def resume(
+    url: str = typer.Option(..., help="URL to resume")
+):
+    """Resume monitoring a paused URL."""
+    resume_target(url)
+
+@app.command()
 def list():
     """List all monitored URLs."""
     targets = load_targets()
     if not targets:
         typer.echo("No targets yet. Use 'add' to add one.")
         return
+    typer.echo(f"\n{'Label':<30} {'Target':>10} {'Last Price':>12} {'Status':<10}")
+    typer.echo("-" * 65)
     for t in targets:
         status = "active" if t.get("active", True) else "paused"
-        typer.echo(f"- {t['label']} | Target: {t['target_price']} | Last price: {t.get('last_price', 'not checked yet')} | {status}")
+        last = str(t.get("last_price") or "not checked")
+        typer.echo(f"{t['label']:<30} {t['target_price']:>10} {last:>12} {status:<10}")
 
 @app.command()
 def check():

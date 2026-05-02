@@ -6,6 +6,13 @@
       "label": "Test Book",
       "last_price": 51.77,
       "active": true
+    },
+    {
+      "url": "https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html",
+      "target_price": 200.0,
+      "label": "Tipping the Velvet",
+      "last_price": 53.74,
+      "active": true
     }
   ]
 }
