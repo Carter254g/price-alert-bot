@@ -2,6 +2,7 @@ import typer
 from src.targets import add_target, remove_target, load_targets
 from src.checker import check_all
 from src.telegram import send_test_message
+from src.scheduler import start_scheduler
 
 app = typer.Typer()
 
@@ -36,6 +37,11 @@ def list():
 def check():
     """Check all URLs once and send alerts if price is hit."""
     check_all()
+
+@app.command()
+def start():
+    """Start the scheduler to check automatically."""
+    start_scheduler()
 
 @app.command()
 def test():
