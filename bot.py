@@ -3,6 +3,7 @@ from src.targets import add_target, remove_target, load_targets, pause_target, r
 from src.checker import check_all
 from src.telegram import send_test_message
 from src.scheduler import start_scheduler
+from src.bot_handler import run_bot
 
 app = typer.Typer()
 
@@ -64,6 +65,11 @@ def start():
 def test():
     """Send a test message to Telegram."""
     send_test_message()
+
+@app.command()
+def telegram():
+    """Start the interactive Telegram bot."""
+    run_bot()
 
 if __name__ == "__main__":
     app()

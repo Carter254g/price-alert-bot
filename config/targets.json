@@ -13,6 +13,13 @@
       "label": "Tipping the Velvet",
       "last_price": 53.74,
       "active": true
+    },
+    {
+      "url": "Check out this product on Jumia https://www.jumia.co.ke/samsung-galaxy-s26-ultra-12gb-ram-256gb-rom-dual-sim-5000mah-black-327156070.html?utm_source=social&utm_medium=pdpshare",
+      "target_price": 150000.0,
+      "label": "Samsung s26 ultra",
+      "last_price": null,
+      "active": true
     }
   ]
 }
