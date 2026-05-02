@@ -1,26 +1,38 @@
 # Price Alert Bot
 
-A Python automation tool that monitors product prices and fires instant Telegram alerts when your target price is hit.
+A Python Telegram bot that helps you find products, monitor prices, buy and sell items — all from Telegram.
 
-## Demo
+No tech knowledge needed. Just open Telegram and type a command.
 
-Add a URL, set a target price, and get a Telegram message the moment the price drops.
+## What It Does
 
-## Features
+**For Buyers:**
+- Search for any product by name
+- Filter results by country and price range
+- Get real listings from Jiji Kenya
+- Set a target price and get alerted automatically when it drops
+- Browse items listed for sale by other users
 
-- Monitor any URL for price changes
-- Instant Telegram notifications when price drops
-- Track multiple URLs at once
-- Pause and resume individual targets
-- Runs automatically on a schedule
-- Clean CLI interface to manage everything
-- Summary report after every check
+**For Sellers:**
+- List any product you want to sell
+- Add photos of your item
+- Buyers can find and contact you directly on Telegram
 
+## Commands
+/search   - Search and monitor a product price
+/browse   - Browse listings from Jiji Kenya and local sellers
+/sell     - List a product you want to sell
+/mylistings - See and manage your active listings
+/list     - See your monitored products
+/check    - Check all prices right now
+/help     - Show all commands
 ## Tech Stack
 
 - Language: Python 3
+- Bot framework: python-telegram-bot
 - Scraping: BeautifulSoup4, Requests
-- Notifications: Telegram Bot API
+- Search: SerpAPI (Google Search)
+- Marketplace data: Jiji Kenya scraper
 - Scheduling: APScheduler
 - CLI: Typer
 - Config: JSON + python-dotenv
@@ -56,84 +68,45 @@ pip install -r requirements.txt
 ### 5. Get your Chat ID
 
 1. Send any message to your new bot
-2. Visit this URL replacing TOKEN with your token:
-   https://api.telegram.org/botTOKEN/getUpdates
+2. Visit: https://api.telegram.org/botTOKEN/getUpdates
 3. Find the chat id in the response
 
-### 6. Configure environment variables
+### 6. Get a SerpAPI key
+
+Sign up free at https://serpapi.com to get your API key.
+
+### 7. Configure environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Edit .env and add your token and chat ID.
+Edit .env and fill in your values.
 
-### 7. Test the connection
-
-```bash
-python3 bot.py test
-```
-
-You should receive a message on Telegram.
-
-## Usage
-
-### Add a URL to monitor
+### 8. Start the bot
 
 ```bash
-python3 bot.py add --url "https://example.com/product" --target 5000 --label "My Product"
+python3 bot.py telegram
 ```
 
-### List all monitored URLs
-
-```bash
-python3 bot.py list
-```
-
-### Check all URLs once
-
-```bash
-python3 bot.py check
-```
-
-### Start the scheduler
-
-```bash
-python3 bot.py start
-```
-
-### Pause a target
-
-```bash
-python3 bot.py pause --url "https://example.com/product"
-```
-
-### Resume a target
-
-```bash
-python3 bot.py resume --url "https://example.com/product"
-```
-
-### Remove a target
-
-```bash
-python3 bot.py remove --url "https://example.com/product"
-```
+Open Telegram and type /start.
 
 ## How It Works
 
-1. You add a product URL and your target price
-2. The bot scrapes the page and extracts the current price
-3. If the price is at or below your target it fires a Telegram alert instantly
-4. The scheduler runs this check automatically every few hours
+1. User types /browse in Telegram
+2. Bot asks what they are looking for
+3. Bot asks for price range
+4. Bot searches Jiji Kenya and local listings
+5. Results come back with prices, locations and links
+6. User can contact sellers directly or set a price alert
 
 ## Roadmap
 
 - Email alerts alongside Telegram
-- Price history tracking and charts
-- Web dashboard to manage targets
-- Support for job listing sites
-- Docker support for always-on deployment
+- WhatsApp integration
+- More marketplace sources
+- Price history charts
+- Web dashboard
 
 ## Author
 
